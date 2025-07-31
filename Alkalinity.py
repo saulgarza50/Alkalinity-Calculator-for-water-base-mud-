@@ -3,11 +3,11 @@ import streamlit as st
 st.set_page_config(page_title="🧪 Alkalinity Contamination Calculator", layout="centered")
 
 st.title("🧪 Alkalinity Contamination Calculator")
-st.markdown("This tool calculates hydroxide, carbonate, and bicarbonate concentrations in drilling fluid and recommends treatment actions based on alkalinity, calcium, and hardness.")
+st.markdown("This tool calculates hydroxide, carbonate, and bicarbonate contamination, evaluates calcium and hardness balance, and recommends treatment dosages.")
 
-# Input section
 st.header("🔢 Input Mud Check Values")
 
+# Safe input conversion
 def safe_float_input(label, default="0.0"):
     try:
         return float(st.text_input(label, value=default))
@@ -20,7 +20,9 @@ mf = safe_float_input("M Alkalinity (Mf)")
 calcium = safe_float_input("Calcium (mg/L)")
 hardness = safe_float_input("Hardness (mg/L)")
 
-# Alkalinity Species Calculation (Table 5-2)
+# ------------------------
+# Alkalinity Speciation
+# ------------------------
 hydroxide = carbonate = bicarbonate = 0.0
 
 if pf == 0:
@@ -36,24 +38,40 @@ elif 2 * pf > mf:
 elif pf == mf:
     hydroxide = 340 * mf
 
-# Contamination flags
-contaminated = False
-contam_reasons = []
+# ------------------------
+# Contamination Advisory
+# ------------------------
+contamination_flag = (
+    carbonate > 100 or
+    bicarbonate > 100 or
+    calcium > 1000 or
+    hardness < 500
+)
 
-if carbonate > 100:
-    contaminated = True
-    contam_reasons.append("Carbonate > 100 mg/L")
-if bicarbonate > 100:
-    contaminated = True
-    contam_reasons.append("Bicarbonate > 100 mg/L")
-if calcium > 1000:
-    contaminated = True
-    contam_reasons.append("Calcium > 1000 mg/L")
-if hardness < 500:
-    contaminated = True
-    contam_reasons.append("Hardness < 500 mg/L")
+# ------------------------
+# Base Treatment Doses
+# ------------------------
+lime_ppb = round((carbonate / 1200) * 3, 2) if carbonate > 0 else 0  # 3:1 Lime to Caustic
+caustic_ppb = round(lime_ppb / 3, 2) if lime_ppb > 0 else round(hydroxide / 340, 2)
+soda_ash_ppb = round((bicarbonate / 1220) * 1.5, 2) if bicarbonate > 0 else 0
 
-# Output Results
+# ------------------------
+# Hardness / Calcium Adjustments
+# ------------------------
+excess_soda_ash_ppb = round((500 - hardness) / 540, 2) if hardness < 500 else 0
+calcium_reduction_ppb = round((calcium - 400) / 10650, 2) if calcium > 400 else 0
+
+# ------------------------
+# Final Treatment Totals
+# ------------------------
+total_soda_ash_ppb = round(soda_ash_ppb + excess_soda_ash_ppb, 2)
+total_calcium_chloride_ppb = calcium_reduction_ppb
+total_lime_ppb = lime_ppb
+total_caustic_ppb = caustic_ppb
+
+# ------------------------
+# Output Section
+# ------------------------
 st.header("📊 Alkalinity Species Results")
 st.write(f"**Hydroxide (mg/L):** {round(hydroxide, 2)}")
 st.write(f"**Carbonate (mg/L):** {round(carbonate, 2)}")
@@ -61,24 +79,19 @@ st.write(f"**Bicarbonate (mg/L):** {round(bicarbonate, 2)}")
 st.write(f"**Calcium (mg/L):** {round(calcium, 2)}")
 st.write(f"**Hardness (mg/L):** {round(hardness, 2)}")
 
-# Treatment Calculations (in lb/bbl)
-lime_lb = round(carbonate / 1200, 2) if carbonate > 0 else 0
-caustic_lb = round(lime_lb / 3, 2) if lime_lb > 0 else round(hydroxide / 340, 2) if hydroxide > 0 else 0
-soda_ash_lb = round((bicarbonate / 1220) * 0.26, 3) if bicarbonate > 0 else 0
-
-# Suggested Treatments
 st.header("🧪 Suggested Treatments (lb/bbl)")
-st.write(f"**Lime:** {lime_lb}")
-st.write(f"**Caustic Soda:** {caustic_lb}")
-st.write(f"**Soda Ash:** {soda_ash_lb}")
+st.write(f"**Lime:** {total_lime_ppb}")
+st.write(f"**Caustic Soda:** {total_caustic_ppb}")
+st.write(f"**Soda Ash:** {total_soda_ash_ppb}")
+st.write(f"**Calcium Chloride (CaCl₂):** {total_calcium_chloride_ppb}")
 
 # Advisory
 st.header("🛡️ Advisory")
-if contaminated:
-    st.error("⚠️ Contamination or imbalance detected:\n" + ", ".join(contam_reasons))
+if contamination_flag:
+    msg = "⚠️ Bicarbonate Contamination (HCO₃⁻ > 0) | Carbonate > 100 mg/L | Ca > 1000 mg/L | Hardness < 500 mg/L"
+    st.error(msg)
 else:
     st.success("✅ System appears balanced — no contamination flagged.")
 
-# Reset Button
-if st.button("🔄 Reset Form"):
-    st.experimental_rerun()
+# Optional Reset Notice
+st.caption("🔁 To reset inputs, refresh the page.")
