@@ -1,72 +1,92 @@
 import streamlit as st
 
-st.set_page_config(page_title="🧪 Alkalinity Contamination Calculator", layout="centered")
-st.title("🧪 Alkalinity Contamination Calculator")
+st.set_page_config(page_title="Alkalinity Contamination Calculator", layout="centered")
+st.title("🛢️ Alkalinity Contamination Calculator")
 
-st.markdown("This calculator determines hydroxide, carbonate, and bicarbonate concentrations in drilling fluid and calculates treatment recommendations for lime, caustic soda, and soda ash. It also flags system imbalances like excess calcium or low hardness.")
+# Initialize reset state
+if 'reset' not in st.session_state:
+    st.session_state.reset = False
 
-# Input helper
-def safe_input(label, default="0.0"):
-    try:
-        return float(st.text_input(label, value=default))
-    except:
-        return 0.0
+def reset_form():
+    st.session_state.pm = 0.0
+    st.session_state.pf = 0.0
+    st.session_state.mf = 0.0
+    st.session_state.calcium = 0.0
+    st.session_state.hardness = 0.0
 
-# Inputs
-pm = safe_input("Phenolphthalein Alkalinity (Pm)")
-pf = safe_input("Filtrate Alkalinity (Pf)")
-mf = safe_input("M Alkalinity (Mf)")
-calcium = safe_input("Calcium (mg/L)")
-hardness = safe_input("Hardness (mg/L)")
+# Input section
+st.header("🧪 Input Mud Check Values")
+pm = st.number_input("PM (Mud Alkalinity)", min_value=0.0, step=0.1, format="%.1f", key="pm")
+pf = st.number_input("PF (Filtrate Alkalinity)", min_value=0.0, step=0.1, format="%.1f", key="pf")
+mf = st.number_input("MF (M Alkalinity)", min_value=0.0, step=0.1, format="%.1f", key="mf")
+calcium = st.number_input("Calcium (mg/L)", min_value=0.0, step=10.0, format="%.0f", key="calcium")
+hardness = st.number_input("Total Hardness (mg/L)", min_value=0.0, step=10.0, format="%.0f", key="hardness")
 
-# Initialize species concentrations
-hydroxide = carbonate = bicarbonate = 0.0
-
-# Determine alkalinity species
+# Alkalinity species logic
 if pf == 0:
-    bicarbonate = 1220 * mf
+    oh = 0
+    co3 = 0
+    hco3 = 1220 * mf
+    zone = "Bicarbonate Only (HCO₃⁻)"
 elif 2 * pf < mf:
-    carbonate = 1200 * pf
-    bicarbonate = 1220 * (mf - 2 * pf)
+    oh = 0
+    co3 = 1200 * pf
+    hco3 = 1220 * (mf - 2 * pf)
+    zone = "Bicarbonate + Carbonate"
 elif 2 * pf == mf:
-    carbonate = 1200 * pf
+    oh = 0
+    co3 = 1200 * pf
+    hco3 = 0
+    zone = "Carbonate Only (CO₃²⁻)"
 elif 2 * pf > mf:
-    hydroxide = 340 * (2 * pf - mf)
-    carbonate = 1200 * (mf - pf)
+    oh = 340 * (2 * pf - mf)
+    co3 = 1200 * (mf - pf)
+    hco3 = 0
+    zone = "Hydroxide + Carbonate"
 elif pf == mf:
-    hydroxide = 340 * mf
+    oh = 0
+    co3 = 1200 * pf
+    hco3 = 0
+    zone = "Carbonate (w/ Possible Error)"
+else:
+    oh = co3 = hco3 = 0
+    zone = "Unknown Alkalinity Pattern"
 
-# Product treatment logic
-lime_ppb = round(carbonate / 1200, 2) if carbonate > 0 else 0
-caustic_ppb = round(hydroxide / 340, 2) if hydroxide > 0 else 0
+# Treatment logic
+lime = round(co3 / 1200, 2) if co3 > 0 else 0
+caustic = round(oh / 340, 2) if oh > 0 else 0
+soda_ash = 0
+if calcium > hardness:
+    excess_ca = calcium - hardness
+    soda_ash = round(excess_ca / 10, 2)
 
-# Soda ash is used to balance excess calcium — we assume theoretical calcium needed = hardness - Ca
-required_calcium = max(hardness - calcium, 0)
-calcium_ppb = round((calcium - required_calcium) / 10, 2)
-soda_ash_ppb = round(calcium_ppb * -1, 3) if calcium_ppb > 0 else 0
+# Advisory flags
+flags = []
+if hco3 > 100: flags.append("High Bicarbonate")
+if co3 > 100: flags.append("High Carbonate")
+if oh > 50: flags.append("Excess Hydroxide")
+if calcium > hardness: flags.append("Excess Calcium")
+if hardness < 500: flags.append("Low Hardness")
 
-# Display Results
-st.subheader("📊 Alkalinity Species Results")
-st.write(f"Hydroxide (mg/L): {round(hydroxide, 2)}")
-st.write(f"Carbonate (mg/L): {round(carbonate, 2)}")
-st.write(f"Bicarbonate (mg/L): {round(bicarbonate, 2)}")
-st.write(f"Calcium (mg/L): {round(calcium, 2)}")
-st.write(f"Hardness (mg/L): {round(hardness, 2)}")
+# Output display
+st.header("📊 Alkalinity Species Results")
+st.write(f"**Hydroxide (OH⁻):** {oh:.1f} mg/L")
+st.write(f"**Carbonate (CO₃²⁻):** {co3:.1f} mg/L")
+st.write(f"**Bicarbonate (HCO₃⁻):** {hco3:.1f} mg/L")
+st.write(f"**Contamination Zone:** :orange[{zone}]")
 
 st.subheader("🧪 Suggested Treatments")
-st.write(f"Lime (ppb): {lime_ppb}")
-st.write(f"Caustic Soda (ppb): {caustic_ppb}")
-st.write(f"Soda Ash (ppb): {soda_ash_ppb}")
+st.write(f"- **Lime (ppb):** {lime}")
+st.write(f"- **Caustic Soda (ppb):** {caustic}")
+st.write(f"- **Soda Ash (ppb):** {soda_ash}")
 
-st.subheader("🛡️ Advisory")
-flags = []
-if bicarbonate > 100: flags.append("bicarbonate")
-if carbonate > 100: flags.append("carbonate")
-if hydroxide > 50: flags.append("hydroxide")
-if calcium_ppb > 1.0: flags.append("excess calcium")
-if hardness < 500: flags.append("low hardness")
-
+st.subheader("📌 Advisory")
 if flags:
-    st.error(f"⚠️ Contamination or imbalance detected: {', '.join(flags)}. Verify soda ash use and treatment levels.")
+    st.error("⚠️ Contamination or imbalance detected: " + ", ".join(flags))
 else:
-    st.success("✅ System appears stable and balanced.")
+    st.success("✅ Mud system appears balanced — no treatment required.")
+
+# Reset Button
+if st.button("🔄 Reset Form"):
+    reset_form()
+    st.experimental_rerun()
