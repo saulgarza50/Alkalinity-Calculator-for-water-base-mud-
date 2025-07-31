@@ -59,13 +59,11 @@ soda_ash_ppb = round((bicarbonate / 1220) * 1.5, 2) if bicarbonate > 0 else 0
 # Hardness / Calcium Adjustments
 # ------------------------
 excess_soda_ash_ppb = round((500 - hardness) / 540, 2) if hardness < 500 else 0
-calcium_reduction_ppb = round((calcium - 400) / 10650, 2) if calcium > 400 else 0
 
 # ------------------------
 # Final Treatment Totals
 # ------------------------
 total_soda_ash_ppb = round(soda_ash_ppb + excess_soda_ash_ppb, 2)
-total_calcium_chloride_ppb = calcium_reduction_ppb
 total_lime_ppb = lime_ppb
 total_caustic_ppb = caustic_ppb
 
@@ -83,7 +81,6 @@ st.header("🧪 Suggested Treatments (lb/bbl)")
 st.write(f"**Lime:** {total_lime_ppb}")
 st.write(f"**Caustic Soda:** {total_caustic_ppb}")
 st.write(f"**Soda Ash:** {total_soda_ash_ppb}")
-st.write(f"**Calcium Chloride (CaCl₂):** {total_calcium_chloride_ppb}")
 
 # Advisory
 st.header("🛡️ Advisory")
