@@ -1,12 +1,13 @@
 import streamlit as st
 
-st.set_page_config(page_title="🛢️ Alkalinity Contamination Calculator", layout="centered")
+st.set_page_config(page_title="🧪 Alkalinity Contamination Calculator", layout="centered")
 
 st.title("🧪 Alkalinity Contamination Calculator")
-st.markdown("This calculator determines hydroxide, carbonate, and bicarbonate levels in water-based mud, flags contamination, and splits treatment into contamination and hardness/correction blocks.")
+st.markdown("This tool calculates hydroxide, carbonate, and bicarbonate concentrations in drilling fluid and recommends treatment actions based on alkalinity, calcium, and hardness.")
 
 st.header("🔢 Input Mud Check Values")
 
+# Clean input fields using text_input and convert to float
 def safe_float_input(label, default="0.0"):
     try:
         return float(st.text_input(label, value=default))
@@ -19,33 +20,38 @@ mf = safe_float_input("M Alkalinity (Mf)")
 calcium = safe_float_input("Calcium (mg/L)")
 hardness = safe_float_input("Hardness (mg/L)")
 
-# Alkalinity Speciation
-hydroxide = carbonate = bicarbonate = 0.0
+# === Alkalinity Species Calculation (Based on Table 5-2) ===
+hydroxide = carbonate = bicarbonate = 0.0  # Reset
 
 if pf == 0:
+    hydroxide = 0
+    carbonate = 0
     bicarbonate = 1220 * mf
 elif 2 * pf < mf:
+    hydroxide = 0
     carbonate = 1200 * pf
     bicarbonate = 1220 * (mf - 2 * pf)
 elif 2 * pf == mf:
+    hydroxide = 0
     carbonate = 1200 * pf
+    bicarbonate = 0
 elif 2 * pf > mf:
     hydroxide = 340 * (2 * pf - mf)
     carbonate = 1200 * (mf - pf)
+    bicarbonate = 0
 elif pf == mf:
     hydroxide = 340 * mf
+    carbonate = 0
+    bicarbonate = 0
+else:
+    hydroxide = carbonate = bicarbonate = 0  # Failsafe
 
-# Block 1 - Contamination Treatment
-lime_contam = round(carbonate / 1200, 3) if carbonate > 0 else 0
-caustic_contam = round(hydroxide / 340, 3) if hydroxide > 0 else 0
-sodaash_contam = round((bicarbonate / 1220) * 1.5, 3) if bicarbonate > 0 else 0
+# === Contamination Flags ===
+contamination = (carbonate > 100) or (bicarbonate > 100)
+high_calcium = calcium > 1000
+low_hardness = hardness < 500
 
-# Block 2 - Calcium/Hardness Correction
-excess_calcium = calcium - hardness
-sodaash_hardness = round(excess_calcium / 1065, 3) if excess_calcium > 0 else 0
-low_hardness_flag = hardness < 500
-
-# Output
+# === Output Section ===
 st.header("📊 Alkalinity Species Results")
 st.write(f"**Hydroxide (mg/L):** {round(hydroxide, 2)}")
 st.write(f"**Carbonate (mg/L):** {round(carbonate, 2)}")
@@ -53,37 +59,42 @@ st.write(f"**Bicarbonate (mg/L):** {round(bicarbonate, 2)}")
 st.write(f"**Calcium (mg/L):** {round(calcium, 2)}")
 st.write(f"**Hardness (mg/L):** {round(hardness, 2)}")
 
-# Block 1 Treatment Output
-st.header("🧪 Block 1: Contamination Treatment (lb/bbl)")
-st.write(f"**Lime:** {lime_contam}")
-st.write(f"**Caustic Soda:** {caustic_contam}")
-st.write(f"**Soda Ash:** {sodaash_contam}")
+# === Contamination Treatment Block ===
+st.subheader("🧪 Block 1: Contamination Treatment (lb/bbl)")
 
-# Block 2 Treatment Output
-st.header("🧪 Block 2: Calcium / Hardness Correction (lb/bbl)")
-st.write(f"**Soda Ash (for excess Ca²⁺):** {sodaash_hardness}")
-if low_hardness_flag:
-    st.warning("⚠️ Hardness is below 500 mg/L. Risk of bicarbonate contamination, foaming, or pump cavitation due to excessive soda ash. Monitor treatment strategy.")
+lime = round(carbonate / 1200, 2) if carbonate > 0 else 0
+caustic = round(hydroxide / 340, 2) if hydroxide > 0 else 0
+soda_ash = round((bicarbonate / 1220) * 1.5, 3) if bicarbonate > 0 else 0
 
-# Advisory Flags
-st.header("🛡️ Advisory Flags")
-flags = []
-if bicarbonate > 100:
-    flags.append("Bicarbonate Contamination (HCO₃⁻ > 100 mg/L)")
-if carbonate > 100:
-    flags.append("Carbonate Contamination (CO₃²⁻ > 100 mg/L)")
-if calcium > 1000:
-    flags.append("High Calcium (> 1000 mg/L)")
-if hardness < 500:
-    flags.append("Low Hardness (< 500 mg/L)")
-if hydroxide > 0 and carbonate == 0 and bicarbonate == 0:
-    flags.append("System Balanced (OH⁻ Only)")
+st.write(f"Lime: {lime}")
+st.write(f"Caustic Soda: {caustic}")
+st.write(f"Soda Ash: {soda_ash}")
 
-if flags:
-    st.error(" | ".join(flags))
+# === Calcium/Hardness Correction Block ===
+st.subheader("🧪 Block 2: Calcium / Hardness Correction (lb/bbl)")
+
+target_hardness = 500
+excess_hardness = hardness - target_hardness
+
+if excess_hardness > 0:
+    excess_calcium = 0.8 * excess_hardness
+    soda_ash_hardness_ppb = round((excess_calcium / 100) * 0.09, 3)
 else:
-    st.success("✅ No contamination or imbalance detected.")
+    soda_ash_hardness_ppb = 0
 
-# Reset
+st.write(f"Soda Ash (for excess Ca²⁺): {soda_ash_hardness_ppb}")
+
+# === Advisory Flags ===
+st.header("🛡️ Advisory Flags")
+if contamination:
+    st.warning("⚠️ Bicarbonate or Carbonate Contamination Detected")
+if high_calcium:
+    st.warning("⚠️ High Calcium (> 1000 mg/L)")
+if low_hardness:
+    st.warning("⚠️ Low Hardness (< 500 mg/L) — risk of foaming or pump cavitation")
+if not (contamination or high_calcium or low_hardness):
+    st.success("✅ No contamination or instability detected — fluid system appears balanced.")
+
+# === Reset Button ===
 if st.button("🔄 Reset"):
     st.experimental_rerun()
