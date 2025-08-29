@@ -1,9 +1,13 @@
 import streamlit as st
+import pandas as pd
 
+# === 🔹 PAGE CONFIGURATION ===
 st.set_page_config(page_title="Alkalinity Contamination Calculator", layout="centered")
+st.title("🛢️ Alkalinity Contamination Calculator")
 
 # === 🔹 INPUT SECTION ===
 st.header("🧪 Input Mud Check Values")
+
 pm = st.number_input("Phenolphthalein Alkalinity (Pm)", min_value=0.0, format="%.2f")
 pf = st.number_input("Filtrate Alkalinity (Pf)", min_value=0.0, format="%.2f")
 mf = st.number_input("M Alkalinity (Mf)", min_value=0.0, format="%.2f")
@@ -11,71 +15,62 @@ calcium = st.number_input("Calcium (mg/L)", min_value=0.0, format="%.1f")
 hardness = st.number_input("Hardness (mg/L)", min_value=0.0, format="%.1f")
 
 # === 🔹 ALKALINITY SPECIATION LOGIC ===
+hydroxide = 0
+carbonate = 0
+bicarbonate = 0
+
 if pm >= mf:
+    # OH only
     hydroxide = 340 * mf
-    carbonate = 0
-    bicarbonate = 0
-elif pf == mf:
-    hydroxide = 340 * pm
+elif (pm > 0) and (mf >= 2 * pm):
+    # CO3 only
+    carbonate = 60 * pm
+elif (pm > 0) and (mf > pm) and (mf < 2 * pm):
+    # Mixed OH + CO3
+    hydroxide = 340 * (2 * pm - mf)
     carbonate = 120 * (mf - pm)
-    bicarbonate = 0
-elif pf > mf:
-    hydroxide = 0
-    carbonate = 0
-    bicarbonate = 122 * pf
-else:
-    hydroxide = 0
-    carbonate = 120 * pf
-    bicarbonate = 122 * (mf - pf)
+elif (pm == 0) and (mf > 0):
+    # HCO3 only
+    bicarbonate = 61 * mf
 
-# === 🔹 CONTAMINATION FLAGS ===
-contamination = carbonate > 100 or bicarbonate > 100
-high_calcium = calcium > 1000
-low_hardness = hardness < 500
+# === 🔹 RESULTS DISPLAY ===
+st.markdown("### 🧾 Alkalinity Species Breakdown")
 
-# === 🔹 OUTPUT – ALKALINITY SPECIES ===
-st.header("📊 Alkalinity Species Results")
-st.write(f"**Hydroxide (mg/L):** {round(hydroxide, 2)}")
-st.write(f"**Carbonate (mg/L):** {round(carbonate, 2)}")
-st.write(f"**Bicarbonate (mg/L):** {round(bicarbonate, 2)}")
-st.write(f"**Calcium (mg/L):** {round(calcium, 2)}")
-st.write(f"**Hardness (mg/L):** {round(hardness, 2)}")
+col1, col2, col3 = st.columns(3)
+col1.metric("Hydroxide (OH⁻)", f"{hydroxide:.2f} mg/L")
+col2.metric("Carbonate (CO₃²⁻)", f"{carbonate:.2f} mg/L")
+col3.metric("Bicarbonate (HCO₃⁻)", f"{bicarbonate:.2f} mg/L")
 
-# === 🔹 BLOCK 1: CONTAMINATION TREATMENT ===
-st.subheader("🧪 Block 1: Contamination Treatment (lb/bbl)")
-lime = round(carbonate / 1200, 2) if carbonate > 0 else 0
-caustic = round(hydroxide / 340, 2) if hydroxide > 0 else 0
-soda_ash = round((bicarbonate / 1220) * 1.5, 3) if bicarbonate > 0 else 0
+# === 🔹 CONTAMINATION ADVISORY ===
+st.markdown("### ⚠️ Contamination Advisory")
 
-st.write(f"**Lime:** {lime}")
-st.write(f"**Caustic Soda:** {caustic}")
-st.write(f"**Soda Ash:** {soda_ash}")
+if calcium > 400:
+    st.warning("🔸 High calcium may indicate cement contamination or gypsum interaction.")
 
-# === 🔹 BLOCK 2: CALCIUM / HARDNESS CORRECTION ===
-st.subheader("🧪 Block 2: Calcium / Hardness Correction (lb/bbl)")
-target_hardness = 500
-excess_hardness = hardness - target_hardness
+if hardness > 500 and calcium < 100:
+    st.info("🔹 Elevated hardness with low calcium may reflect excess soda ash or carbonate scaling.")
 
-if excess_hardness > 0:
-    excess_calcium = 0.8 * excess_hardness
-    soda_ash_hardness_ppb = round((excess_calcium / 1000) * 6.4, 3)
-else:
-    soda_ash_hardness_ppb = 0
+if bicarbonate > 150:
+    st.error("🔺 High bicarbonate detected – risk of gas-cut mud or CO₂ contamination.")
 
-st.write(f"**Soda Ash (for excess Ca²⁺):** {soda_ash_hardness_ppb}")
+if hydroxide > 500:
+    st.warning("🔸 Hydroxide is very high – risk of emulsion instability or over-treatment with caustic.")
 
-# === 🔹 HIGH CALCIUM + CONTAMINATION STRATEGY ===
-if high_calcium and (carbonate > 100 or bicarbonate > 100):
-    caustic_override = round((calcium / 1000) * 0.25, 3)
-    st.write(f"**⚠️ High Calcium Strategy: Add Caustic Soda = {caustic_override} lb/bbl**")
+# === 🔹 EXPORT RESULTS TO CSV ===
+st.markdown("### 📤 Export Results")
 
-# === 🔹 ADVISORY FLAGS ===
-st.subheader("🛡️ Advisory Flags")
-if carbonate > 100:
-    st.warning("⚠️ Carbonate Contamination Detected (CO₃²⁻ > 100 mg/L)")
-if bicarbonate > 100:
-    st.warning("⚠️ Bicarbonate Contamination Detected (HCO₃⁻ > 100 mg/L)")
-if high_calcium:
-    st.warning("⚠️ High Calcium (> 1000 mg/L) — monitor for hardness drop and foaming risk")
-if low_hardness:
-    st.warning("⚠️ Low Hardness (< 500 mg/L) — risk of bicarbonate foaming or cavitation")
+data = {
+    "Parameter": ["Pm", "Pf", "Mf", "Calcium", "Hardness", "Hydroxide", "Carbonate", "Bicarbonate"],
+    "Value": [pm, pf, mf, calcium, hardness, hydroxide, carbonate, bicarbonate]
+}
+
+df = pd.DataFrame(data)
+
+st.download_button(
+    label="📥 Download Results as CSV",
+    data=df.to_csv(index=False).encode('utf-8'),
+    file_name="alkalinity_report.csv",
+    mime="text/csv"
+)
+
+# === ✅ END OF APP ===
